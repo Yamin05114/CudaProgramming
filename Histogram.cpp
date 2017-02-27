@@ -350,6 +350,81 @@
         }  
     }  
     
+
+    // This version only works for one single block! The size of the array of items  
+    __global__ void scan2(unsigned int *d_out, const unsigned int * const d_in, const unsigned int numBins, const unsigned int numElems)  
+    {  
+         extern __shared__ float sdata[];  
+         int tid = threadIdx.x;  
+         int offset = 1;  
+  
+         // load two items per thread into shared memory  
+         if ((2 * tid) < numBins) 
+         {  
+            sdata[2 * tid] = d_in[2 * tid];    
+         }  
+         else 
+         {  
+            sdata[2 * tid] = 0;  
+         }  
+  
+         if ((2 * tid + 1) < numBins) 
+         {  
+            sdata[2 * tid + 1] = d_in[2 * tid + 1];    
+         }  
+         
+         else 
+         {  
+            sdata[2 * tid + 1] = 0;  
+         }  
+  
+         // Reduce  
+         for (unsigned int d = numElems >> 1; d > 0; d >>= 1) 
+         {  
+            if (tid < d)  
+            {  
+               int ai = offset * (2 * tid + 1) - 1;  
+               int bi = offset * (2 * tid + 2) - 1;  
+               sdata[bi] += sdata[ai];  
+            }  
+            offset *= 2;  
+            __syncthreads();  
+         }  
+      
+         // clear the last element  
+         if (tid == 0) 
+         {  
+            sdata[numElems - 1] = 0;  
+         }  
+    
+         // Down Sweep  
+         for (unsigned int d = 1; d < numElems; d *= 2) 
+         {  
+            offset >>= 1;  
+            if (tid < d) 
+            {  
+               int ai = offset * (2 * tid + 1) - 1;  
+               int bi = offset * (2 * tid + 2) - 1;  
+               float t = sdata[ai];  
+               sdata[ai] = sdata[bi];  
+               sdata[bi] += t;  
+            }  
+            __syncthreads();  
+         }  
+   
+         // write the output to global memory  
+         if ((2 * tid) < numBins) 
+         {  
+            d_out[2 * tid] = sdata[2 * tid];  
+         }  
+  
+         if ((2 * tid + 1) < numBins) {  
+            d_out[2 * tid + 1] = sdata[2 * tid + 1];  
+         }  
+    }  
+
+
+
     
     __global__ void add_scan(unsigned int *d_out, const unsigned int * const d_in, const unsigned int numBins) 
     {  
